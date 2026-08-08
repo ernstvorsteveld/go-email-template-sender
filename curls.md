@@ -40,3 +40,24 @@ curl --request POST \
 curl --request GET \
   --url http://localhost:8180/stylesheets/a46cc6e0-605c-41b8-bf0e-6b42341f27f3
 ```
+
+
+### Template
+
+**Create Template**
+```bash
+curl --request POST \
+  --url http://localhost:8180/stylesheets/a46cc6e0-605c-41b8-bf0e-6b42341f27f3 \
+  --header 'Content-Type: application/json' \
+  --data '{
+    "name": "Acme Default Theme",
+    "code": "ACME_DEFAULT",
+    "css_content": "body { font-family: Arial, sans-serif; } h1 { color: #0055ff; }"
+}'
+```
+
+**Get Template**
+```bash
+curl --request GET \
+  --url http://localhost:8180/stylesheets/a46cc6e0-605c-41b8-bf0e-6b42341f27f3
+```

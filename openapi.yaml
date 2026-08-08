@@ -2,10 +2,22 @@ openapi: 3.0.3
 info:
   title: Go Email Template Sender API
   version: 1.0.0
-  description: A dynamic templating, styling, data-binding, and email delivery service.
+  description: A dynamic templating, styling, data-binding, and email delivery service built with Hexagonal Architecture.
 servers:
   - url: http://localhost:8080
     description: Local development server
+
+tags:
+  - name: Contexts
+    description: Arbitrary JSON data context store
+  - name: Stylesheets
+    description: CSS stylesheet management
+  - name: Templates
+    description: Dynamic HTML document templates
+  - name: Bindings
+    description: Data source query bindings
+  - name: Deliveries
+    description: Email delivery and dispatch orchestrator
 
 paths:
   # ==========================================
@@ -13,7 +25,10 @@ paths:
   # ==========================================
   /contexts:
     post:
+      tags:
+        - Contexts
       summary: Create a new Context
+      operationId: createContext
       requestBody:
         required: true
         content:
@@ -26,17 +41,17 @@ paths:
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  id:
-                    type: string
-                    format: uuid
+                $ref: '#/components/schemas/IdResponse'
     get:
+      tags:
+        - Contexts
       summary: List Contexts
+      operationId: listContexts
       parameters:
         - name: customer_name
           in: query
           description: Filter by customer name
+          required: false
           schema:
             type: string
       responses:
@@ -48,10 +63,13 @@ paths:
                 type: array
                 items:
                   $ref: '#/components/schemas/ContextResponse'
-  
+
   /contexts/{id}:
     get:
+      tags:
+        - Contexts
       summary: Get a Context by ID
+      operationId: getContext
       parameters:
         - name: id
           in: path
@@ -66,8 +84,13 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ContextResponse'
+        '404':
+          description: Context not found
     put:
-      summary: Update a Context
+      tags:
+        - Contexts
+      summary: Fully replace an existing Context
+      operationId: updateContext
       parameters:
         - name: id
           in: path
@@ -84,13 +107,18 @@ paths:
       responses:
         '204':
           description: Context updated successfully
+        '404':
+          description: Context not found
 
   # ==========================================
   # Stylesheets
   # ==========================================
   /stylesheets:
     post:
-      summary: Create a Stylesheet
+      tags:
+        - Stylesheets
+      summary: Create a new Stylesheet
+      operationId: createStylesheet
       requestBody:
         required: true
         content:
@@ -103,25 +131,35 @@ paths:
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  id:
-                    type: string
-                    format: uuid
+                $ref: '#/components/schemas/IdResponse'
     get:
+      tags:
+        - Stylesheets
       summary: List Stylesheets
+      operationId: listStylesheets
       parameters:
         - name: name
           in: query
+          description: Filter by stylesheet name
+          required: false
           schema:
             type: string
       responses:
         '200':
           description: A list of Stylesheets
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/StylesheetResponse'
 
   /stylesheets/{id}:
     get:
+      tags:
+        - Stylesheets
       summary: Get Stylesheet by ID
+      operationId: getStylesheet
       parameters:
         - name: id
           in: path
@@ -132,8 +170,17 @@ paths:
       responses:
         '200':
           description: Stylesheet found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StylesheetResponse'
+        '404':
+          description: Stylesheet not found
     put:
-      summary: Update a Stylesheet
+      tags:
+        - Stylesheets
+      summary: Fully replace an existing Stylesheet
+      operationId: updateStylesheet
       parameters:
         - name: id
           in: path
@@ -149,14 +196,19 @@ paths:
               $ref: '#/components/schemas/CreateStylesheetRequest'
       responses:
         '204':
-          description: Stylesheet updated
+          description: Stylesheet updated successfully
+        '404':
+          description: Stylesheet not found
 
   # ==========================================
   # Templates
   # ==========================================
   /templates:
     post:
-      summary: Create a Template
+      tags:
+        - Templates
+      summary: Create a new Template
+      operationId: createTemplate
       requestBody:
         required: true
         content:
@@ -169,25 +221,35 @@ paths:
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  id:
-                    type: string
-                    format: uuid
+                $ref: '#/components/schemas/IdResponse'
     get:
+      tags:
+        - Templates
       summary: List Templates
+      operationId: listTemplates
       parameters:
         - name: name
           in: query
+          description: Filter by template name
+          required: false
           schema:
             type: string
       responses:
         '200':
           description: A list of Templates
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/TemplateResponse'
 
   /templates/{id}:
     get:
+      tags:
+        - Templates
       summary: Get Template by ID
+      operationId: getTemplate
       parameters:
         - name: id
           in: path
@@ -198,8 +260,17 @@ paths:
       responses:
         '200':
           description: Template found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TemplateResponse'
+        '404':
+          description: Template not found
     put:
-      summary: Update a Template
+      tags:
+        - Templates
+      summary: Update Template document content or stylesheet
+      operationId: updateTemplate
       parameters:
         - name: id
           in: path
@@ -215,12 +286,17 @@ paths:
               $ref: '#/components/schemas/CreateTemplateRequest'
       responses:
         '204':
-          description: Template updated
+          description: Template updated successfully
+        '404':
+          description: Template not found
 
   /templates/{id}/render:
     get:
-      summary: Render a Template with CSS injected
-      description: Returns the raw HTML after safely injecting the CSS from the linked stylesheet.
+      tags:
+        - Templates
+      summary: Render a Template with linked CSS injected
+      operationId: renderTemplate
+      description: Returns the raw rendered HTML document after safely injecting linked stylesheet CSS into the head section.
       parameters:
         - name: id
           in: path
@@ -230,18 +306,23 @@ paths:
             format: uuid
       responses:
         '200':
-          description: Rendered HTML
+          description: Rendered HTML document
           content:
             text/html:
               schema:
                 type: string
+        '404':
+          description: Template or linked stylesheet not found
 
   # ==========================================
   # Bindings
   # ==========================================
   /bindings:
     post:
-      summary: Create a Binding
+      tags:
+        - Bindings
+      summary: Create a new Binding
+      operationId: createBinding
       requestBody:
         required: true
         content:
@@ -254,25 +335,35 @@ paths:
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  id:
-                    type: string
-                    format: uuid
+                $ref: '#/components/schemas/IdResponse'
     get:
+      tags:
+        - Bindings
       summary: List Bindings
+      operationId: listBindings
       parameters:
         - name: name
           in: query
+          description: Filter by binding name
+          required: false
           schema:
             type: string
       responses:
         '200':
           description: A list of Bindings
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/BindingResponse'
 
   /bindings/{id}:
     get:
+      tags:
+        - Bindings
       summary: Get Binding by ID
+      operationId: getBinding
       parameters:
         - name: id
           in: path
@@ -283,8 +374,17 @@ paths:
       responses:
         '200':
           description: Binding found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BindingResponse'
+        '404':
+          description: Binding not found
     put:
-      summary: Update a Binding
+      tags:
+        - Bindings
+      summary: Fully replace an existing Binding
+      operationId: updateBinding
       parameters:
         - name: id
           in: path
@@ -300,15 +400,20 @@ paths:
               $ref: '#/components/schemas/CreateBindingRequest'
       responses:
         '204':
-          description: Binding updated
+          description: Binding updated successfully
+        '404':
+          description: Binding not found
 
   # ==========================================
   # Deliveries
   # ==========================================
   /deliveries:
     post:
-      summary: Trigger delivery orchestration
-      description: Executes a bulk operation by resolving contexts from the binding's query, merging Handlebars, and sending emails.
+      tags:
+        - Deliveries
+      summary: Trigger email delivery dispatch
+      operationId: createDelivery
+      description: Resolves contexts using the binding query, renders HTML template with Handlebars and CSS, and dispatches emails via SMTP.
       requestBody:
         required: true
         content:
@@ -317,41 +422,62 @@ paths:
               $ref: '#/components/schemas/CreateDeliveryRequest'
       responses:
         '202':
-          description: Delivery successfully dispatched to all resolved contexts
+          description: Delivery dispatch accepted and started
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  status:
-                    type: string
+                $ref: '#/components/schemas/DeliveryResponse'
+        '400':
+          description: Invalid request parameters
+        '500':
+          description: Delivery dispatch failure
 
 # ==========================================
 # Reusable Schemas
 # ==========================================
 components:
   schemas:
+    IdResponse:
+      type: object
+      required:
+        - id
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: "6664076e-7253-4dd6-b768-3bdd81b699d1"
+
     CreateContextRequest:
       type: object
-      properties:
-        reference_id:
-          type: string
-        customer_name:
-          type: string
-        payload:
-          type: string
-          description: Arbitrary JSON string payload
-        email_jsonpath:
-          type: string
-          description: JSONPath to extract recipient email from payload
       required:
         - reference_id
         - customer_name
         - payload
         - email_jsonpath
-        
+      properties:
+        reference_id:
+          type: string
+          example: "REF-1001"
+        customer_name:
+          type: string
+          example: "Acme Corp"
+        payload:
+          type: string
+          description: Arbitrary JSON string payload
+          example: "{\"user\": {\"name\": \"Alice\", \"email\": \"alice@acme.com\"}}"
+        email_jsonpath:
+          type: string
+          description: JSONPath expression to extract recipient email address from payload
+          example: "$.user.email"
+
     ContextResponse:
       type: object
+      required:
+        - id
+        - reference_id
+        - customer_name
+        - payload
+        - email_jsonpath
       properties:
         id:
           type: string
@@ -367,55 +493,138 @@ components:
 
     CreateStylesheetRequest:
       type: object
+      required:
+        - name
+        - code
+        - css_content
       properties:
+        name:
+          type: string
+          example: "Corporate Blue Theme"
+        code:
+          type: string
+          example: "STYLE_CORP_01"
+        css_content:
+          type: string
+          example: "h1 { color: #003366; font-family: sans-serif; }"
+
+    StylesheetResponse:
+      type: object
+      required:
+        - id
+        - name
+        - code
+        - css_content
+      properties:
+        id:
+          type: string
+          format: uuid
         name:
           type: string
         code:
           type: string
         css_content:
           type: string
-      required:
-        - name
-        - code
-        - css_content
-        
+
     CreateTemplateRequest:
       type: object
-      properties:
-        name:
-          type: string
-        code:
-          type: string
-        html_content:
-          type: string
-          description: Raw HTML with Handlebars placeholders
-        stylesheet_id:
-          type: string
-          format: uuid
-          nullable: true
       required:
         - name
         - code
         - html_content
-        
-    CreateBindingRequest:
-      type: object
+        - subject
       properties:
         name:
           type: string
-        query:
+          example: "Monthly Invoice Template"
+        code:
           type: string
-          description: Raw SQL SELECT query used to fetch contexts
-        template_id:
+          example: "TMPL_INV_01"
+        html_content:
+          type: string
+          description: Raw HTML content with Handlebars placeholders
+          example: "<h1>Invoice for {{user.name}}</h1>"
+        subject:
+          type: string
+          description: Email subject line
+          example: "Your Monthly Invoice"
+        stylesheet_id:
           type: string
           format: uuid
+          nullable: true
+          description: Optional foreign key linked to a Stylesheet
+
+    TemplateResponse:
+      type: object
+      required:
+        - id
+        - name
+        - code
+        - version
+        - html_content
+        - subject
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        code:
+          type: string
+        version:
+          type: integer
+          example: 1
+        html_content:
+          type: string
+        subject:
+          type: string
+        stylesheet_id:
+          type: string
+          format: uuid
+          nullable: true
+
+    CreateBindingRequest:
+      type: object
       required:
         - name
         - query
         - template_id
+      properties:
+        name:
+          type: string
+          example: "Active Customer Invoices Binding"
+        query:
+          type: string
+          description: SQL query statement selecting contexts from contexts table
+          example: "SELECT id, reference_id, customer_name, payload::text, email_jsonpath FROM contexts WHERE payload->'user'->>'status' = 'ACTIVE'"
+        template_id:
+          type: string
+          format: uuid
+
+    BindingResponse:
+      type: object
+      required:
+        - id
+        - name
+        - query
+        - template_id
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        query:
+          type: string
+        template_id:
+          type: string
+          format: uuid
 
     CreateDeliveryRequest:
       type: object
+      required:
+        - template_id
+        - binding_id
       properties:
         template_id:
           type: string
@@ -423,6 +632,12 @@ components:
         binding_id:
           type: string
           format: uuid
+
+    DeliveryResponse:
+      type: object
       required:
-        - template_id
-        - binding_id
+        - status
+      properties:
+        status:
+          type: string
+          example: "dispatched"
