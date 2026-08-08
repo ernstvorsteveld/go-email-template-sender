@@ -1,0 +1,33 @@
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: emaildb
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: emaildb
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./pgdata:/var/lib/postgresql/data
+      - ./schema.sql:/docker-entrypoint-initdb.d/schema.sql
+
+  # Mailpit acts as an SMTP server mock and provides a Web UI to view sent emails
+  mailpit:
+    image: axllent/mailpit
+    container_name: mailpit
+    ports:
+      - "1025:1025" # SMTP server (for the Go app to connect to)
+      - "8025:8025" # Web UI (for you to view the emails in the browser)
+    environment:
+      MP_MAX_MESSAGES: 500
+
+  # Adminer provides a lightweight Web UI to inspect the PostgreSQL database
+  adminer:
+    image: adminer
+    container_name: adminer
+    ports:
+      - "8081:8080"
+
+volumes:
+  pgdata:
