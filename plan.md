@@ -19,46 +19,16 @@ The codebase enforces strict layer isolation:
 
 ---
 
-## 🗄️ 2. Database Schema (`schema.sql`)
+## 🗄️ 2. Database Schema
 
-Defined in [`schema.sql`](file:///Users/ernstvorsteveld/git/go/go-email-template-sender/schema.sql):
+The database DDL schema and GIN indexes are defined in [`schema.sql`](file:///Users/ernstvorsteveld/git/go/go-email-template-sender/schema.sql).
 
-```sql
-CREATE TABLE IF NOT EXISTS contexts (
-    id UUID PRIMARY KEY,
-    reference_id VARCHAR(255) NOT NULL,
-    customer_name VARCHAR(255) NOT NULL,
-    payload JSONB NOT NULL,
-    email_jsonpath VARCHAR(255) NOT NULL
-);
-
--- GIN index for high-performance JSONB querying over arbitrary payloads
-CREATE INDEX IF NOT EXISTS idx_contexts_payload_gin ON contexts USING GIN (payload);
-
-CREATE TABLE IF NOT EXISTS stylesheets (
-    id UUID PRIMARY KEY,
-    name VARCHAR(255) NOT NULL,
-    code VARCHAR(255) UNIQUE NOT NULL,
-    css_content TEXT NOT NULL
-);
-
-CREATE TABLE IF NOT EXISTS templates (
-    id UUID PRIMARY KEY,
-    name VARCHAR(255) NOT NULL,
-    code VARCHAR(255) UNIQUE NOT NULL,
-    version INT NOT NULL,
-    stylesheet_id UUID REFERENCES stylesheets(id),
-    html_content TEXT NOT NULL,
-    subject VARCHAR(255) NOT NULL
-);
-
-CREATE TABLE IF NOT EXISTS bindings (
-    id UUID PRIMARY KEY,
-    name VARCHAR(255) NOT NULL,
-    query TEXT NOT NULL,
-    template_id UUID REFERENCES templates(id) NOT NULL
-);
-```
+* **Schema File**: [`schema.sql`](file:///Users/ernstvorsteveld/git/go/go-email-template-sender/schema.sql)
+* **Tables Summary**:
+  * `contexts`: UUID primary key, `reference_id`, `customer_name`, `payload` (JSONB with GIN index), `email_jsonpath`.
+  * `stylesheets`: UUID primary key, `name`, unique `code`, `css_content`.
+  * `templates`: UUID primary key, `name`, unique `code`, `version`, `stylesheet_id` (foreign key), `html_content`, `subject`.
+  * `bindings`: UUID primary key, `name`, `query`, `template_id` (foreign key).
 
 ---
 
