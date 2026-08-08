@@ -1,57 +1,642 @@
-Here is the updated prompt with the collection-level `GET` endpoint for searching Stylesheets added.
+# Project Architecture & Master Implementation Plan: `go-email-template-sender`
+
+> **Overview**: `go-email-template-sender` is a dynamic email templating, CSS styling, arbitrary JSON context data-binding, and email delivery orchestration service written in Golang (Go 1.22+). It is designed adhering strictly to **Hexagonal Architecture (Ports and Adapters)** and **Domain-Driven Design (DDD)** principles, backed by PostgreSQL and Mailpit/SMTP.
 
 ---
 
-**"Act as a senior Golang software architect. I need to design a web API using a strict Hexagonal Architecture (Ports and Adapters) and Domain-Driven Design (DDD) principles. The API acts as a dynamic templating, styling, data-binding, and email delivery service, backed by PostgreSQL.**
+## 🏛️ 1. Architecture & Design Principles
 
-**Please define the core domain models, inbound/outbound ports (interfaces), application services (use cases), and adapters (HTTP handlers, Postgres repositories) for the following resources:**
-
-**1. Context Data (Arbitrary JSON Store)**
-
-* **`POST /contexts`**: Accepts an external `reference_id` (string), a `customer_name` (string), a `payload` (string) containing arbitrary JSON, and an `email_jsonpath` (a string defining the JSONPath to extract the recipient email address from the payload). Stores this in PostgreSQL. Returns a newly generated internal `id` (UUID).
-* **`GET /contexts`**: Retrieves a list of Context entities. Must accept an optional query parameter `customer_name` to filter the results.
-* **`GET /contexts/{id}`**: Retrieves the Context entity as JSON, including the `reference_id`, `customer_name`, `email_jsonpath`, `id` and the arbitrary `payload`.
-* **`PUT /contexts/{id}`**: Fully replaces the existing JSON payload, reference, `customer_name`, and `email_jsonpath` for the given internal ID.
-
-**2. Stylesheets (CSS Store)**
-
-* **`POST /stylesheets`**: Accepts a `name` (string), a unique `code` (string), and the raw `css_content` string. Stores it in the database and returns an internal `id` (UUID).
-* **`GET /stylesheets`**: Retrieves a list of Stylesheet entities. Must accept an optional query parameter `name` to filter the results.
-* **`GET /stylesheets/{id}`**: Retrieves the Stylesheet metadata (id, name, code) and the `css_content` as a standard JSON response.
-* **`PUT /stylesheets/{id}`**: Fully replaces the CSS content and metadata for the given internal ID.
-
-**3. Document Templates (HTML Store & Rendering)**
-
-* **`POST /templates`**: Accepts a `name` (string), a unique `code` (string), the raw `html_content` string (which may contain Handlebars-style variables), and an optional `stylesheet_id` (foreign key to the Stylesheet). Stores it in the database and returns an internal `id` (UUID). Include a `version` integer that starts at 1.
-* **`GET /templates`**: Retrieves a list of Template entities. Must accept an optional query parameter `name` to filter the results.
-* **`GET /templates/{id}`**: Retrieves the Template metadata as JSON, including `id`, `name`, `code`, `version`, `stylesheet_id`, and the raw `html_content`.
-* **`PUT /templates/{id}`**: Updates the HTML document and/or the linked `stylesheet_id`, and increments its version.
-* **`GET /templates/{id}/render`**: Retrieves the HTML template. If a `stylesheet_id` is linked, the application service must use the `[github.com/PuerkitoBio/goquery](https://github.com/PuerkitoBio/goquery)` library to parse the HTML string and safely append a `<link>` tag to the `<head>` section before returning the final HTML string.
-
-**4. Data Source Bindings (Secure Query Definitions)**
-
-* **`POST /bindings`**: Accepts a `name` (string), query` (a select statement that is used to select context objects as string), and a `template_id` to link the data to a specific HTML document. Returns a binding `id`.
-* **`GET /bindings`**: Retrieves a list of Binding entities. Must accept an optional query parameter `name` to filter the results.
-* **`GET /bindings/{id}`**: Retrieves the Binding details as JSON, including the `id`, `query`, and `template_id`.
-* **`PUT /bindings/{id}`**: Updates the complete Binding object.
-
-**5. Delivery & Dispatch (Template Merging & Emailing)**
-
-* **`POST /deliveries`**: Accepts a `template_id` and a `binding_id`. The application service orchestrating this must perform the following workflow:
-1. Resolve the Context data using the Binding.
-2. Extract the destination email address from the Context's JSON payload using the Context's stored `email_jsonpath`.
-3. Retrieve the HTML Template (including the goquery-injected CSS link).
-4. Merge the Context JSON payload into the HTML template using a templating engine (e.g., standard `html/template` or a Handlebars library like `aymerick/raymond`).
-5. Dispatch the final rendered HTML to the extracted email address via an outbound `EmailSender` port.
-
-
-
-**Architectural & Technical Requirements:**
-
-* **Hexagonal Strictness:** Explicitly separate the code into `domain` (entities/aggregates), `application` (use cases), `ports` (interfaces for driving and driven actors), and `adapters` (HTTP transport, Postgres storage, Email sender).
-* **Boundary Isolation:** HTTP request/response structs must not bleed into the domain models. SQL queries and database tags (`db:""`) must be contained entirely within the repository adapters, mapping to pure domain entities before returning.
-* Use `pgx` for PostgreSQL interactions.
-* Use standard Go idioms and a lightweight router (like `net/http` in Go 1.22+ or `chi`).
-* Ensure the design prevents SQL injection by utilizing the `query_identifier` approach rather than accepting raw SQL strings."
+### A. Hexagonal Architecture (Ports and Adapters)
+The codebase enforces strict layer isolation:
+* **Domain Layer (`internal/domain`)**: Pure Go domain entities (`Context`, `Stylesheet`, `Template`, `Binding`) free from database tags or HTTP annotations.
+* **Inbound Driving Ports (`internal/application/port/in`)**: Go interface contracts defining all application use cases.
+* **Outbound Driven Ports (`internal/application/port/out`)**: Go interface contracts defining persistence and email delivery capabilities.
+* **Application Services (`internal/application/service`)**: Pure use case orchestrators executing business rules,Handlebars template rendering (`aymerick/raymond`), and CSS link injection (`PuerkitoBio/goquery`).
+* **Inbound Driving Adapters (`internal/adapter/in/http`)**: REST HTTP transport powered by Go 1.22 `net/http` standard library router. Implements OpenAPI-generated `gen.ServerInterface`.
+* **Outbound Driven Adapters**:
+  * **PostgreSQL (`internal/adapter/out/postgres`)**: SQL persistence utilizing `pgx/v5` pool (`pgxpool`), supporting native PostgreSQL `JSONB` querying operators (`payload->>'field'`).
+  * **Email Sender (`internal/adapter/out/email`)**: SMTP client connected to Mailpit.
 
 ---
+
+## 🗄️ 2. Database Schema (`schema.sql`)
+
+```sql
+CREATE TABLE IF NOT EXISTS contexts (
+    id UUID PRIMARY KEY,
+    reference_id VARCHAR(255) NOT NULL,
+    customer_name VARCHAR(255) NOT NULL,
+    payload JSONB NOT NULL,
+    email_jsonpath VARCHAR(255) NOT NULL
+);
+
+-- GIN index for high-performance JSONB querying over arbitrary payloads
+CREATE INDEX IF NOT EXISTS idx_contexts_payload_gin ON contexts USING GIN (payload);
+
+CREATE TABLE IF NOT EXISTS stylesheets (
+    id UUID PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    code VARCHAR(255) UNIQUE NOT NULL,
+    css_content TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS templates (
+    id UUID PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    code VARCHAR(255) UNIQUE NOT NULL,
+    version INT NOT NULL,
+    stylesheet_id UUID REFERENCES stylesheets(id),
+    html_content TEXT NOT NULL,
+    subject VARCHAR(255) NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS bindings (
+    id UUID PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    query TEXT NOT NULL,
+    template_id UUID REFERENCES templates(id) NOT NULL
+);
+```
+
+---
+
+## 📄 3. OpenAPI 3.0 Specification (`openapi.yaml`)
+
+```yaml
+openapi: 3.0.3
+info:
+  title: Go Email Template Sender API
+  version: 1.0.0
+  description: A dynamic templating, styling, data-binding, and email delivery service built with Hexagonal Architecture.
+servers:
+  - url: http://localhost:8080
+    description: Local development server
+
+tags:
+  - name: Contexts
+    description: Arbitrary JSON data context store
+  - name: Stylesheets
+    description: CSS stylesheet management
+  - name: Templates
+    description: Dynamic HTML document templates
+  - name: Bindings
+    description: Data source query bindings
+  - name: Deliveries
+    description: Email delivery and dispatch orchestrator
+
+paths:
+  /contexts:
+    post:
+      tags: [Contexts]
+      summary: Create a new Context
+      operationId: createContext
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateContextRequest'
+      responses:
+        '201':
+          description: Context created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IdResponse'
+    get:
+      tags: [Contexts]
+      summary: List Contexts
+      operationId: listContexts
+      parameters:
+        - name: customer_name
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        '200':
+          description: A list of Contexts
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ContextResponse'
+
+  /contexts/{id}:
+    get:
+      tags: [Contexts]
+      summary: Get a Context by ID
+      operationId: getContext
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Context found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ContextResponse'
+        '404':
+          description: Context not found
+    put:
+      tags: [Contexts]
+      summary: Fully replace an existing Context
+      operationId: updateContext
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateContextRequest'
+      responses:
+        '204':
+          description: Context updated successfully
+
+  /stylesheets:
+    post:
+      tags: [Stylesheets]
+      summary: Create a new Stylesheet
+      operationId: createStylesheet
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateStylesheetRequest'
+      responses:
+        '201':
+          description: Stylesheet created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IdResponse'
+    get:
+      tags: [Stylesheets]
+      summary: List Stylesheets
+      operationId: listStylesheets
+      parameters:
+        - name: name
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        '200':
+          description: A list of Stylesheets
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/StylesheetResponse'
+
+  /stylesheets/{id}:
+    get:
+      tags: [Stylesheets]
+      summary: Get Stylesheet by ID
+      operationId: getStylesheet
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Stylesheet found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StylesheetResponse'
+    put:
+      tags: [Stylesheets]
+      summary: Fully replace an existing Stylesheet
+      operationId: updateStylesheet
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateStylesheetRequest'
+      responses:
+        '204':
+          description: Stylesheet updated
+
+  /templates:
+    post:
+      tags: [Templates]
+      summary: Create a new Template
+      operationId: createTemplate
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateTemplateRequest'
+      responses:
+        '201':
+          description: Template created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IdResponse'
+    get:
+      tags: [Templates]
+      summary: List Templates
+      operationId: listTemplates
+      parameters:
+        - name: name
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        '200':
+          description: A list of Templates
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/TemplateResponse'
+
+  /templates/{id}:
+    get:
+      tags: [Templates]
+      summary: Get Template by ID
+      operationId: getTemplate
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Template found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TemplateResponse'
+    put:
+      tags: [Templates]
+      summary: Update Template document
+      operationId: updateTemplate
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateTemplateRequest'
+      responses:
+        '204':
+          description: Template updated
+
+  /templates/{id}/render:
+    get:
+      tags: [Templates]
+      summary: Render a Template with linked CSS injected
+      operationId: renderTemplate
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Rendered HTML document
+          content:
+            text/html:
+              schema:
+                type: string
+
+  /bindings:
+    post:
+      tags: [Bindings]
+      summary: Create a new Binding
+      operationId: createBinding
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateBindingRequest'
+      responses:
+        '201':
+          description: Binding created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IdResponse'
+    get:
+      tags: [Bindings]
+      summary: List Bindings
+      operationId: listBindings
+      parameters:
+        - name: name
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        '200':
+          description: A list of Bindings
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/BindingResponse'
+
+  /bindings/{id}:
+    get:
+      tags: [Bindings]
+      summary: Get Binding by ID
+      operationId: getBinding
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Binding found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BindingResponse'
+    put:
+      tags: [Bindings]
+      summary: Fully replace an existing Binding
+      operationId: updateBinding
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateBindingRequest'
+      responses:
+        '204':
+          description: Binding updated
+
+  /deliveries:
+    post:
+      tags: [Deliveries]
+      summary: Trigger email delivery dispatch
+      operationId: createDelivery
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateDeliveryRequest'
+      responses:
+        '202':
+          description: Delivery dispatch accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeliveryResponse'
+
+components:
+  schemas:
+    IdResponse:
+      type: object
+      required: [id]
+      properties:
+        id:
+          type: string
+          format: uuid
+
+    CreateContextRequest:
+      type: object
+      required: [reference_id, customer_name, payload, email_jsonpath]
+      properties:
+        reference_id:
+          type: string
+        customer_name:
+          type: string
+        payload:
+          type: string
+        email_jsonpath:
+          type: string
+
+    ContextResponse:
+      type: object
+      required: [id, reference_id, customer_name, payload, email_jsonpath]
+      properties:
+        id:
+          type: string
+          format: uuid
+        reference_id:
+          type: string
+        customer_name:
+          type: string
+        payload:
+          type: string
+        email_jsonpath:
+          type: string
+
+    CreateStylesheetRequest:
+      type: object
+      required: [name, code, css_content]
+      properties:
+        name:
+          type: string
+        code:
+          type: string
+        css_content:
+          type: string
+
+    StylesheetResponse:
+      type: object
+      required: [id, name, code, css_content]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        code:
+          type: string
+        css_content:
+          type: string
+
+    CreateTemplateRequest:
+      type: object
+      required: [name, code, html_content, subject]
+      properties:
+        name:
+          type: string
+        code:
+          type: string
+        html_content:
+          type: string
+        subject:
+          type: string
+        stylesheet_id:
+          type: string
+          format: uuid
+          nullable: true
+
+    TemplateResponse:
+      type: object
+      required: [id, name, code, version, html_content, subject, stylesheet_id]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        code:
+          type: string
+        version:
+          type: integer
+        html_content:
+          type: string
+        subject:
+          type: string
+        stylesheet_id:
+          type: string
+          format: uuid
+          nullable: true
+
+    CreateBindingRequest:
+      type: object
+      required: [name, query, template_id]
+      properties:
+        name:
+          type: string
+        query:
+          type: string
+        template_id:
+          type: string
+          format: uuid
+
+    BindingResponse:
+      type: object
+      required: [id, name, query, template_id]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        query:
+          type: string
+        template_id:
+          type: string
+          format: uuid
+
+    CreateDeliveryRequest:
+      type: object
+      required: [template_id, binding_id]
+      properties:
+        template_id:
+          type: string
+          format: uuid
+        binding_id:
+          type: string
+          format: uuid
+
+    DeliveryResponse:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          example: "dispatched"
+```
+
+---
+
+## 🛠️ 4. Code Generation & Subpackage Isolation
+
+### Generator Configuration (`oapi-codegen.yaml`)
+The generated transport code is isolated into a dedicated `gen/` subpackage:
+
+```yaml
+package: gen
+output: internal/adapter/in/http/gen/api.gen.go
+generate:
+  models: true
+  std-http-server: true
+```
+
+### Git Exclusion (`.gitignore`)
+The generated code is excluded from version control so it can be generated on demand:
+
+```gitignore
+# Binaries
+bin/
+/server
+
+# Generated OpenAPI code
+*.gen.go
+internal/adapter/in/http/gen/
+```
+
+### Code Generation Target (`Makefile`)
+```makefile
+generate:
+	@echo "Generating API server and types from openapi.yaml..."
+	go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@latest -config oapi-codegen.yaml openapi.yaml
+```
+
+---
+
+## 🚀 5. Quickstart & Verification Commands
+
+```bash
+# 1. Generate API transport code from openapi.yaml
+make generate
+
+# 2. Run unit, integration, and Testcontainers E2E test suite
+make test
+
+# 3. Build program binary
+make build
+
+# 4. Start local infrastructure (Postgres 16 & Mailpit)
+make docker/up
+```
