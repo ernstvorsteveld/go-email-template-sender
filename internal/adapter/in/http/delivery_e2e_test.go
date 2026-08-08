@@ -16,7 +16,7 @@ import (
 	"github.com/ernstvorsteveld/go-email-template-sender/internal/testutils"
 )
 
-func TestE2E_HTTPHandlers(t *testing.T) {
+func TestDeliveryAPI_E2E(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
 	defer cancel()
 
@@ -46,7 +46,6 @@ func TestE2E_HTTPHandlers(t *testing.T) {
 	bindSvc := service.NewBindingService(bindRepo)
 	delSvc := service.NewDeliveryService(bindRepo, ctxRepo, tmplSvc, sender)
 
-	// 3. Setup Router using generated OpenAPI handler
 	router := adapter_http.NewRouter(ctxSvc, styleSvc, tmplSvc, bindSvc, delSvc)
 
 	sendRequest := func(method, path, body string) *httptest.ResponseRecorder {
@@ -62,12 +61,8 @@ func TestE2E_HTTPHandlers(t *testing.T) {
 		return rr
 	}
 
-	// ==========================================
-	// 4. Run Complete End-to-End User Journey
-	// ==========================================
-
-	// STEP A: Create Stylesheet
-	rr := sendRequest("POST", "/stylesheets", `{"name": "Style", "code": "S_01", "css_content": "h1 {color: blue;}"}`)
+	// 3. Create Stylesheet
+	rr := sendRequest(http.MethodPost, "/stylesheets", `{"name": "E2E Style", "code": "DELIV_S1", "css_content": "h1 {color: purple;}"}`)
 	if rr.Code != http.StatusCreated {
 		t.Fatalf("failed to create stylesheet: %s", rr.Body.String())
 	}
@@ -75,8 +70,8 @@ func TestE2E_HTTPHandlers(t *testing.T) {
 	json.NewDecoder(rr.Body).Decode(&styleResp)
 	styleID := styleResp["id"]
 
-	// STEP B: Create Template linked to the Stylesheet
-	rr = sendRequest("POST", "/templates", `{"name": "E2E Template", "code": "E2E_01", "html_content": "<h1>Hi {{user}}!</h1>", "subject": "E2E Test", "stylesheet_id": "`+styleID+`"}`)
+	// 4. Create Template
+	rr = sendRequest(http.MethodPost, "/templates", `{"name": "Delivery Template", "code": "DELIV_T1", "html_content": "<h1>Hello {{user}}!</h1>", "subject": "Delivery E2E Test Subject", "stylesheet_id": "`+styleID+`"}`)
 	if rr.Code != http.StatusCreated {
 		t.Fatalf("failed to create template: %s", rr.Body.String())
 	}
@@ -84,14 +79,14 @@ func TestE2E_HTTPHandlers(t *testing.T) {
 	json.NewDecoder(rr.Body).Decode(&tmplResp)
 	tmplID := tmplResp["id"]
 
-	// STEP C: Create Customer Context with JSON data
-	rr = sendRequest("POST", "/contexts", `{"reference_id": "U-1", "customer_name": "Acme", "payload": "{\"user\": \"Bob\", \"email\": \"bob@e2e.local\"}", "email_jsonpath": "$.email"}`)
+	// 5. Create Context
+	rr = sendRequest(http.MethodPost, "/contexts", `{"reference_id": "DELIV-1", "customer_name": "Delivery Customer", "payload": "{\"user\": \"Charlie\", \"email\": \"charlie@delivery-e2e.local\"}", "email_jsonpath": "$.email"}`)
 	if rr.Code != http.StatusCreated {
 		t.Fatalf("failed to create context: %s", rr.Body.String())
 	}
 
-	// STEP D: Create a SQL Binding to fetch Contexts and map to Template
-	rr = sendRequest("POST", "/bindings", `{"name": "Acme Binding", "query": "SELECT id, reference_id, customer_name, payload::text, email_jsonpath FROM contexts", "template_id": "`+tmplID+`"}`)
+	// 6. Create Binding
+	rr = sendRequest(http.MethodPost, "/bindings", `{"name": "Delivery Binding", "query": "SELECT id, reference_id, customer_name, payload::text, email_jsonpath FROM contexts", "template_id": "`+tmplID+`"}`)
 	if rr.Code != http.StatusCreated {
 		t.Fatalf("failed to create binding: %s", rr.Body.String())
 	}
@@ -99,17 +94,17 @@ func TestE2E_HTTPHandlers(t *testing.T) {
 	json.NewDecoder(rr.Body).Decode(&bindResp)
 	bindID := bindResp["id"]
 
-	// STEP E: Trigger Delivery Orchestrator via API
-	rr = sendRequest("POST", "/deliveries", `{"template_id": "`+tmplID+`", "binding_id": "`+bindID+`"}`)
+	// 7. Trigger Delivery Dispatch via POST /deliveries
+	rr = sendRequest(http.MethodPost, "/deliveries", `{"template_id": "`+tmplID+`", "binding_id": "`+bindID+`"}`)
 	if rr.Code != http.StatusAccepted {
 		t.Fatalf("failed to dispatch delivery: %s", rr.Body.String())
 	}
 
-	// STEP F: Wait and verify SMTP traffic hit Mailpit correctly
+	// 8. Verify SMTP email receipt in Mailpit
 	time.Sleep(1 * time.Second)
 	mpResp, err := http.Get(mailpit.APIURL + "/messages")
 	if err != nil {
-		t.Fatalf("failed to fetch from mailpit: %v", err)
+		t.Fatalf("failed to fetch messages from mailpit: %v", err)
 	}
 	defer mpResp.Body.Close()
 
@@ -126,12 +121,12 @@ func TestE2E_HTTPHandlers(t *testing.T) {
 	if len(result.Messages) != 1 {
 		t.Fatalf("expected 1 message in mailpit, got %d", len(result.Messages))
 	}
-	
+
 	msg := result.Messages[0]
-	if msg.Subject != "E2E Test" {
-		t.Errorf("expected subject 'E2E Test', got %q", msg.Subject)
+	if msg.Subject != "Delivery E2E Test Subject" {
+		t.Errorf("expected subject 'Delivery E2E Test Subject', got %q", msg.Subject)
 	}
-	if len(msg.To) == 0 || msg.To[0].Address != "bob@e2e.local" {
-		t.Errorf("expected recipient 'bob@e2e.local', got %q", msg.To)
+	if len(msg.To) == 0 || msg.To[0].Address != "charlie@delivery-e2e.local" {
+		t.Errorf("expected recipient 'charlie@delivery-e2e.local', got %v", msg.To)
 	}
 }
