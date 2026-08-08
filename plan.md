@@ -11,7 +11,7 @@ The codebase enforces strict layer isolation:
 * **Domain Layer (`internal/domain`)**: Pure Go domain entities (`Context`, `Stylesheet`, `Template`, `Binding`) free from database tags or HTTP annotations.
 * **Inbound Driving Ports (`internal/application/port/in`)**: Go interface contracts defining all application use cases.
 * **Outbound Driven Ports (`internal/application/port/out`)**: Go interface contracts defining persistence and email delivery capabilities.
-* **Application Services (`internal/application/service`)**: Pure use case orchestrators executing business rules,Handlebars template rendering (`aymerick/raymond`), and CSS link injection (`PuerkitoBio/goquery`).
+* **Application Services (`internal/application/service`)**: Pure use case orchestrators executing business rules, Handlebars template rendering (`aymerick/raymond`), and CSS link injection (`PuerkitoBio/goquery`).
 * **Inbound Driving Adapters (`internal/adapter/in/http`)**: REST HTTP transport powered by Go 1.22 `net/http` standard library router. Implements OpenAPI-generated `gen.ServerInterface`.
 * **Outbound Driven Adapters**:
   * **PostgreSQL (`internal/adapter/out/postgres`)**: SQL persistence utilizing `pgx/v5` pool (`pgxpool`), supporting native PostgreSQL `JSONB` querying operators (`payload->>'field'`).
@@ -20,6 +20,8 @@ The codebase enforces strict layer isolation:
 ---
 
 ## 🗄️ 2. Database Schema (`schema.sql`)
+
+Defined in [`schema.sql`](file:///Users/ernstvorsteveld/git/go/go-email-template-sender/schema.sql):
 
 ```sql
 CREATE TABLE IF NOT EXISTS contexts (
@@ -60,540 +62,29 @@ CREATE TABLE IF NOT EXISTS bindings (
 
 ---
 
-## 📄 3. OpenAPI 3.0 Specification (`openapi.yaml`)
+## 📄 3. OpenAPI 3.0 Specification
 
-```yaml
-openapi: 3.0.3
-info:
-  title: Go Email Template Sender API
-  version: 1.0.0
-  description: A dynamic templating, styling, data-binding, and email delivery service built with Hexagonal Architecture.
-servers:
-  - url: http://localhost:8080
-    description: Local development server
+The complete API specification is defined in [`openapi.yaml`](file:///Users/ernstvorsteveld/git/go/go-email-template-sender/openapi.yaml).
 
-tags:
-  - name: Contexts
-    description: Arbitrary JSON data context store
-  - name: Stylesheets
-    description: CSS stylesheet management
-  - name: Templates
-    description: Dynamic HTML document templates
-  - name: Bindings
-    description: Data source query bindings
-  - name: Deliveries
-    description: Email delivery and dispatch orchestrator
-
-paths:
-  /contexts:
-    post:
-      tags: [Contexts]
-      summary: Create a new Context
-      operationId: createContext
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/CreateContextRequest'
-      responses:
-        '201':
-          description: Context created successfully
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/IdResponse'
-    get:
-      tags: [Contexts]
-      summary: List Contexts
-      operationId: listContexts
-      parameters:
-        - name: customer_name
-          in: query
-          required: false
-          schema:
-            type: string
-      responses:
-        '200':
-          description: A list of Contexts
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/ContextResponse'
-
-  /contexts/{id}:
-    get:
-      tags: [Contexts]
-      summary: Get a Context by ID
-      operationId: getContext
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
-      responses:
-        '200':
-          description: Context found
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ContextResponse'
-        '404':
-          description: Context not found
-    put:
-      tags: [Contexts]
-      summary: Fully replace an existing Context
-      operationId: updateContext
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/CreateContextRequest'
-      responses:
-        '204':
-          description: Context updated successfully
-
-  /stylesheets:
-    post:
-      tags: [Stylesheets]
-      summary: Create a new Stylesheet
-      operationId: createStylesheet
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/CreateStylesheetRequest'
-      responses:
-        '201':
-          description: Stylesheet created
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/IdResponse'
-    get:
-      tags: [Stylesheets]
-      summary: List Stylesheets
-      operationId: listStylesheets
-      parameters:
-        - name: name
-          in: query
-          required: false
-          schema:
-            type: string
-      responses:
-        '200':
-          description: A list of Stylesheets
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/StylesheetResponse'
-
-  /stylesheets/{id}:
-    get:
-      tags: [Stylesheets]
-      summary: Get Stylesheet by ID
-      operationId: getStylesheet
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
-      responses:
-        '200':
-          description: Stylesheet found
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/StylesheetResponse'
-    put:
-      tags: [Stylesheets]
-      summary: Fully replace an existing Stylesheet
-      operationId: updateStylesheet
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/CreateStylesheetRequest'
-      responses:
-        '204':
-          description: Stylesheet updated
-
-  /templates:
-    post:
-      tags: [Templates]
-      summary: Create a new Template
-      operationId: createTemplate
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/CreateTemplateRequest'
-      responses:
-        '201':
-          description: Template created
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/IdResponse'
-    get:
-      tags: [Templates]
-      summary: List Templates
-      operationId: listTemplates
-      parameters:
-        - name: name
-          in: query
-          required: false
-          schema:
-            type: string
-      responses:
-        '200':
-          description: A list of Templates
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/TemplateResponse'
-
-  /templates/{id}:
-    get:
-      tags: [Templates]
-      summary: Get Template by ID
-      operationId: getTemplate
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
-      responses:
-        '200':
-          description: Template found
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/TemplateResponse'
-    put:
-      tags: [Templates]
-      summary: Update Template document
-      operationId: updateTemplate
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/CreateTemplateRequest'
-      responses:
-        '204':
-          description: Template updated
-
-  /templates/{id}/render:
-    get:
-      tags: [Templates]
-      summary: Render a Template with linked CSS injected
-      operationId: renderTemplate
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
-      responses:
-        '200':
-          description: Rendered HTML document
-          content:
-            text/html:
-              schema:
-                type: string
-
-  /bindings:
-    post:
-      tags: [Bindings]
-      summary: Create a new Binding
-      operationId: createBinding
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/CreateBindingRequest'
-      responses:
-        '201':
-          description: Binding created
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/IdResponse'
-    get:
-      tags: [Bindings]
-      summary: List Bindings
-      operationId: listBindings
-      parameters:
-        - name: name
-          in: query
-          required: false
-          schema:
-            type: string
-      responses:
-        '200':
-          description: A list of Bindings
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/BindingResponse'
-
-  /bindings/{id}:
-    get:
-      tags: [Bindings]
-      summary: Get Binding by ID
-      operationId: getBinding
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
-      responses:
-        '200':
-          description: Binding found
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/BindingResponse'
-    put:
-      tags: [Bindings]
-      summary: Fully replace an existing Binding
-      operationId: updateBinding
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/CreateBindingRequest'
-      responses:
-        '204':
-          description: Binding updated
-
-  /deliveries:
-    post:
-      tags: [Deliveries]
-      summary: Trigger email delivery dispatch
-      operationId: createDelivery
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/CreateDeliveryRequest'
-      responses:
-        '202':
-          description: Delivery dispatch accepted
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/DeliveryResponse'
-
-components:
-  schemas:
-    IdResponse:
-      type: object
-      required: [id]
-      properties:
-        id:
-          type: string
-          format: uuid
-
-    CreateContextRequest:
-      type: object
-      required: [reference_id, customer_name, payload, email_jsonpath]
-      properties:
-        reference_id:
-          type: string
-        customer_name:
-          type: string
-        payload:
-          type: string
-        email_jsonpath:
-          type: string
-
-    ContextResponse:
-      type: object
-      required: [id, reference_id, customer_name, payload, email_jsonpath]
-      properties:
-        id:
-          type: string
-          format: uuid
-        reference_id:
-          type: string
-        customer_name:
-          type: string
-        payload:
-          type: string
-        email_jsonpath:
-          type: string
-
-    CreateStylesheetRequest:
-      type: object
-      required: [name, code, css_content]
-      properties:
-        name:
-          type: string
-        code:
-          type: string
-        css_content:
-          type: string
-
-    StylesheetResponse:
-      type: object
-      required: [id, name, code, css_content]
-      properties:
-        id:
-          type: string
-          format: uuid
-        name:
-          type: string
-        code:
-          type: string
-        css_content:
-          type: string
-
-    CreateTemplateRequest:
-      type: object
-      required: [name, code, html_content, subject]
-      properties:
-        name:
-          type: string
-        code:
-          type: string
-        html_content:
-          type: string
-        subject:
-          type: string
-        stylesheet_id:
-          type: string
-          format: uuid
-          nullable: true
-
-    TemplateResponse:
-      type: object
-      required: [id, name, code, version, html_content, subject, stylesheet_id]
-      properties:
-        id:
-          type: string
-          format: uuid
-        name:
-          type: string
-        code:
-          type: string
-        version:
-          type: integer
-        html_content:
-          type: string
-        subject:
-          type: string
-        stylesheet_id:
-          type: string
-          format: uuid
-          nullable: true
-
-    CreateBindingRequest:
-      type: object
-      required: [name, query, template_id]
-      properties:
-        name:
-          type: string
-        query:
-          type: string
-        template_id:
-          type: string
-          format: uuid
-
-    BindingResponse:
-      type: object
-      required: [id, name, query, template_id]
-      properties:
-        id:
-          type: string
-          format: uuid
-        name:
-          type: string
-        query:
-          type: string
-        template_id:
-          type: string
-          format: uuid
-
-    CreateDeliveryRequest:
-      type: object
-      required: [template_id, binding_id]
-      properties:
-        template_id:
-          type: string
-          format: uuid
-        binding_id:
-          type: string
-          format: uuid
-
-    DeliveryResponse:
-      type: object
-      required: [status]
-      properties:
-        status:
-          type: string
-          example: "dispatched"
-```
+* **Specification File**: [`openapi.yaml`](file:///Users/ernstvorsteveld/git/go/go-email-template-sender/openapi.yaml)
+* **API Endpoints Summary**:
+  * `POST /contexts` & `GET /contexts` (Create & List contexts)
+  * `GET /contexts/{id}` & `PUT /contexts/{id}` (Get & Update context)
+  * `POST /stylesheets` & `GET /stylesheets` (Create & List stylesheets)
+  * `GET /stylesheets/{id}` & `PUT /stylesheets/{id}` (Get & Update stylesheet)
+  * `POST /templates` & `GET /templates` (Create & List templates)
+  * `GET /templates/{id}` & `PUT /templates/{id}` (Get & Update template)
+  * `GET /templates/{id}/render` (Render HTML with linked CSS injected)
+  * `POST /bindings` & `GET /bindings` (Create & List bindings)
+  * `GET /bindings/{id}` & `PUT /bindings/{id}` (Get & Update binding)
+  * `POST /deliveries` (Trigger email dispatch workflow)
 
 ---
 
 ## 🛠️ 4. Code Generation & Subpackage Isolation
 
 ### Generator Configuration (`oapi-codegen.yaml`)
-The generated transport code is isolated into a dedicated `gen/` subpackage:
+Defined in [`oapi-codegen.yaml`](file:///Users/ernstvorsteveld/git/go/go-email-template-sender/oapi-codegen.yaml):
 
 ```yaml
 package: gen
@@ -604,7 +95,7 @@ generate:
 ```
 
 ### Git Exclusion (`.gitignore`)
-The generated code is excluded from version control so it can be generated on demand:
+Defined in [`.gitignore`](file:///Users/ernstvorsteveld/git/go/go-email-template-sender/.gitignore):
 
 ```gitignore
 # Binaries
@@ -617,6 +108,8 @@ internal/adapter/in/http/gen/
 ```
 
 ### Code Generation Target (`Makefile`)
+Defined in [`Makefile`](file:///Users/ernstvorsteveld/git/go/go-email-template-sender/Makefile):
+
 ```makefile
 generate:
 	@echo "Generating API server and types from openapi.yaml..."
