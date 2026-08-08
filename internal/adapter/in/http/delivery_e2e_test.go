@@ -79,14 +79,20 @@ func TestDeliveryAPI_E2E(t *testing.T) {
 	json.NewDecoder(rr.Body).Decode(&tmplResp)
 	tmplID := tmplResp["id"]
 
-	// 5. Create Context
-	rr = sendRequest(http.MethodPost, "/contexts", `{"reference_id": "DELIV-1", "customer_name": "Delivery Customer", "payload": "{\"user\": \"Charlie\", \"email\": \"charlie@delivery-e2e.local\"}", "email_jsonpath": "$.email"}`)
+	// 5a. Create Context 1: ACTIVE (Should be matched by the binding WHERE query)
+	rr = sendRequest(http.MethodPost, "/contexts", `{"reference_id": "DELIV-1", "customer_name": "Active Customer", "payload": "{\"user\": \"Charlie\", \"email\": \"charlie@delivery-e2e.local\", \"status\": \"ACTIVE\"}", "email_jsonpath": "$.email"}`)
 	if rr.Code != http.StatusCreated {
-		t.Fatalf("failed to create context: %s", rr.Body.String())
+		t.Fatalf("failed to create active context: %s", rr.Body.String())
 	}
 
-	// 6. Create Binding
-	rr = sendRequest(http.MethodPost, "/bindings", `{"name": "Delivery Binding", "query": "SELECT id, reference_id, customer_name, payload::text, email_jsonpath FROM contexts", "template_id": "`+tmplID+`"}`)
+	// 5b. Create Context 2: INACTIVE (Should be filtered OUT by the binding WHERE query)
+	rr = sendRequest(http.MethodPost, "/contexts", `{"reference_id": "DELIV-2", "customer_name": "Inactive Customer", "payload": "{\"user\": \"Dave\", \"email\": \"dave@inactive-e2e.local\", \"status\": \"INACTIVE\"}", "email_jsonpath": "$.email"}`)
+	if rr.Code != http.StatusCreated {
+		t.Fatalf("failed to create inactive context: %s", rr.Body.String())
+	}
+
+	// 6. Create Binding with PostgreSQL JSONB WHERE clause filter: payload->>'status' = 'ACTIVE'
+	rr = sendRequest(http.MethodPost, "/bindings", `{"name": "Filtered Delivery Binding", "query": "SELECT id, reference_id, customer_name, payload::text, email_jsonpath FROM contexts WHERE payload->>'status' = 'ACTIVE'", "template_id": "`+tmplID+`"}`)
 	if rr.Code != http.StatusCreated {
 		t.Fatalf("failed to create binding: %s", rr.Body.String())
 	}
@@ -100,7 +106,7 @@ func TestDeliveryAPI_E2E(t *testing.T) {
 		t.Fatalf("failed to dispatch delivery: %s", rr.Body.String())
 	}
 
-	// 8. Verify SMTP email receipt in Mailpit
+	// 8. Verify SMTP email receipt in Mailpit (Only 1 message for charlie@delivery-e2e.local)
 	time.Sleep(1 * time.Second)
 	mpResp, err := http.Get(mailpit.APIURL + "/messages")
 	if err != nil {
@@ -110,6 +116,7 @@ func TestDeliveryAPI_E2E(t *testing.T) {
 
 	var result struct {
 		Messages []struct {
+			ID      string `json:"ID"`
 			Subject string `json:"Subject"`
 			To      []struct {
 				Address string `json:"Address"`
@@ -119,7 +126,7 @@ func TestDeliveryAPI_E2E(t *testing.T) {
 	json.NewDecoder(mpResp.Body).Decode(&result)
 
 	if len(result.Messages) != 1 {
-		t.Fatalf("expected 1 message in mailpit, got %d", len(result.Messages))
+		t.Fatalf("expected exactly 1 message in mailpit (Dave should be filtered out by WHERE clause), got %d", len(result.Messages))
 	}
 
 	msg := result.Messages[0]
@@ -128,5 +135,24 @@ func TestDeliveryAPI_E2E(t *testing.T) {
 	}
 	if len(msg.To) == 0 || msg.To[0].Address != "charlie@delivery-e2e.local" {
 		t.Errorf("expected recipient 'charlie@delivery-e2e.local', got %v", msg.To)
+	}
+
+	// 9. Fetch full email body from Mailpit to verify Handlebars merging and CSS injection
+	msgDetailResp, err := http.Get(mailpit.APIURL + "/message/" + msg.ID)
+	if err != nil {
+		t.Fatalf("failed to fetch message detail from mailpit: %v", err)
+	}
+	defer msgDetailResp.Body.Close()
+
+	var msgDetail struct {
+		HTML string `json:"HTML"`
+	}
+	json.NewDecoder(msgDetailResp.Body).Decode(&msgDetail)
+
+	if !bytes.Contains([]byte(msgDetail.HTML), []byte("Hello Charlie!")) {
+		t.Errorf("expected sent email HTML to contain merged Handlebars text 'Hello Charlie!', got %s", msgDetail.HTML)
+	}
+	if !bytes.Contains([]byte(msgDetail.HTML), []byte("color: purple;")) {
+		t.Errorf("expected sent email HTML to contain injected CSS 'color: purple;', got %s", msgDetail.HTML)
 	}
 }
