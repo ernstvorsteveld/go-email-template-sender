@@ -1,12 +1,12 @@
-# Project Architecture & Master Implementation Plan: `go-email-template-sender`
+# Project Architecture & Master Implementation Plan: go-email-template-sender
 
-> **Overview**: `go-email-template-sender` is a dynamic email templating, CSS styling, arbitrary JSON context data-binding, and email delivery orchestration service written in Golang (Go 1.22+). It is designed adhering strictly to **Hexagonal Architecture (Ports and Adapters)** and **Domain-Driven Design (DDD)** principles, backed by PostgreSQL and Mailpit/SMTP.
+go-email-template-sender is a dynamic email templating, CSS styling, arbitrary JSON context data-binding, and email delivery orchestration service written in Golang (Go 1.22+). It is designed adhering strictly to Hexagonal Architecture (Ports and Adapters) and Domain-Driven Design (DDD) principles, backed by PostgreSQL and Mailpit/SMTP.
 
 ---
 
-## 🏛️ 1. Architecture & Design Principles
+## 1. Architecture & Design Principles
 
-### A. Hexagonal Architecture (Ports and Adapters)
+### Layer Isolation (Ports and Adapters)
 The codebase enforces strict layer isolation:
 * **Domain Layer (`internal/domain`)**: Pure Go domain entities (`Context`, `Stylesheet`, `Template`, `Binding`) free from database tags or HTTP annotations.
 * **Inbound Driving Ports (`internal/application/port/in`)**: Go interface contracts defining all application use cases.
@@ -19,7 +19,7 @@ The codebase enforces strict layer isolation:
 
 ---
 
-## 🗄️ 2. Database Schema
+## 2. Database Schema
 
 The database DDL schema and GIN indexes are defined in [`schema.sql`](file:///Users/ernstvorsteveld/git/go/go-email-template-sender/schema.sql).
 
@@ -32,7 +32,7 @@ The database DDL schema and GIN indexes are defined in [`schema.sql`](file:///Us
 
 ---
 
-## 📄 3. OpenAPI 3.0 Specification
+## 3. OpenAPI 3.0 Specification
 
 The complete API specification is defined in [`openapi.yaml`](file:///Users/ernstvorsteveld/git/go/go-email-template-sender/openapi.yaml).
 
@@ -51,7 +51,7 @@ The complete API specification is defined in [`openapi.yaml`](file:///Users/erns
 
 ---
 
-## 🛠️ 4. Code Generation & Subpackage Isolation
+## 4. Code Generation & Subpackage Isolation
 
 ### Generator Configuration (`oapi-codegen.yaml`)
 Defined in [`oapi-codegen.yaml`](file:///Users/ernstvorsteveld/git/go/go-email-template-sender/oapi-codegen.yaml):
@@ -88,7 +88,7 @@ generate:
 
 ---
 
-## 🚀 5. Quickstart & Verification Commands
+## 5. Quickstart & Verification Commands
 
 ```bash
 # 1. Generate API transport code from openapi.yaml
