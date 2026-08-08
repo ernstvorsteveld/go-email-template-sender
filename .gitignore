@@ -36,3 +36,8 @@ Thumbs.db
 *.swp
 *.swo
 *~
+
+# Generated OpenAPI code
+*.gen.go
+internal/adapter/in/http/gen/
+

@@ -46,20 +46,8 @@ func TestE2E_HTTPHandlers(t *testing.T) {
 	bindSvc := service.NewBindingService(bindRepo)
 	delSvc := service.NewDeliveryService(bindRepo, ctxRepo, tmplSvc, sender)
 
-	// 3. Setup Handlers and Router
-	tmplHandler := adapter_http.NewTemplateHandler(tmplSvc)
-	styleHandler := adapter_http.NewStylesheetHandler(styleSvc)
-	ctxHandler := adapter_http.NewContextHandler(ctxSvc)
-	bindHandler := adapter_http.NewBindingHandler(bindSvc)
-	delHandler := adapter_http.NewDeliveryHandler(delSvc)
-
-	mux := http.NewServeMux()
-	mux.HandleFunc("POST /templates", tmplHandler.Create)
-	mux.HandleFunc("GET /templates/{id}", tmplHandler.Get)
-	mux.HandleFunc("POST /stylesheets", styleHandler.Create)
-	mux.HandleFunc("POST /contexts", ctxHandler.Create)
-	mux.HandleFunc("POST /bindings", bindHandler.Create)
-	mux.HandleFunc("POST /deliveries", delHandler.Create)
+	// 3. Setup Router using generated OpenAPI handler
+	router := adapter_http.NewRouter(ctxSvc, styleSvc, tmplSvc, bindSvc, delSvc)
 
 	sendRequest := func(method, path, body string) *httptest.ResponseRecorder {
 		var req *http.Request
@@ -70,7 +58,7 @@ func TestE2E_HTTPHandlers(t *testing.T) {
 			req = httptest.NewRequest(method, path, nil)
 		}
 		rr := httptest.NewRecorder()
-		mux.ServeHTTP(rr, req)
+		router.ServeHTTP(rr, req)
 		return rr
 	}
 

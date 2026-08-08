@@ -563,6 +563,7 @@ components:
         - version
         - html_content
         - subject
+        - stylesheet_id
       properties:
         id:
           type: string

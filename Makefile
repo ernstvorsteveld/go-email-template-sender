@@ -1,9 +1,13 @@
-.PHONY: all build run test test/http docker/up docker/down clean
+.PHONY: all build run generate test test/http docker/up docker/down clean
 
 APP_NAME=email-sender
 MAIN_PATH=./cmd/server
 
-all: test build
+all: generate test build
+
+generate:
+	@echo "Generating API server and types from openapi.yaml..."
+	go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@latest -config oapi-codegen.yaml openapi.yaml
 
 build:
 	@echo "Building $(APP_NAME)..."

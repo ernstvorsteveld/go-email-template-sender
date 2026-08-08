@@ -28,11 +28,7 @@ func TestTemplateHandler_Integration(t *testing.T) {
 	tmplRepo := postgres.NewTemplateRepository(pool)
 	styleRepo := postgres.NewStylesheetRepository(pool)
 	tmplSvc := service.NewTemplateService(tmplRepo, styleRepo)
-	handler := adapter_http.NewTemplateHandler(tmplSvc)
-
-	mux := http.NewServeMux()
-	mux.HandleFunc("POST /templates", handler.Create)
-	mux.HandleFunc("GET /templates/{id}", handler.Get)
+	router := adapter_http.NewRouter(nil, nil, tmplSvc, nil, nil)
 
 	// 1. Create a Template via HTTP POST
 	reqBody := []byte(`{
@@ -46,7 +42,7 @@ func TestTemplateHandler_Integration(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/templates", bytes.NewBuffer(reqBody))
 	req.Header.Set("Content-Type", "application/json")
 	rr := httptest.NewRecorder()
-	mux.ServeHTTP(rr, req)
+	router.ServeHTTP(rr, req)
 
 	if rr.Code != http.StatusCreated {
 		t.Fatalf("expected status 201, got %d: %s", rr.Code, rr.Body.String())
@@ -65,7 +61,7 @@ func TestTemplateHandler_Integration(t *testing.T) {
 	// 2. Fetch the created Template via HTTP GET
 	req = httptest.NewRequest(http.MethodGet, "/templates/"+id, nil)
 	rr = httptest.NewRecorder()
-	mux.ServeHTTP(rr, req)
+	router.ServeHTTP(rr, req)
 
 	if rr.Code != http.StatusOK {
 		t.Fatalf("expected status 200, got %d", rr.Code)
